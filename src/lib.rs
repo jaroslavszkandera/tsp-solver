@@ -1,13 +1,220 @@
 use rand::Rng;
 use rand::prelude::IndexedRandom;
 use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File as StdFile;
 use std::io::{BufRead, BufReader as StdBufReader};
+use std::time::Instant;
+
+pub struct Config {
+    pub file_path: Option<String>,
+    pub num_ants: usize,
+    pub num_iters: usize,
+    pub alpha: f64,          // Pheromone influence
+    pub beta: f64,           // Heuristic influence
+    pub evap_rate: f64,      // Rho
+    pub q_val: f64,          // Pheromone deposit factor
+    pub init_pheromone: f64, // Initial pheromone
+    pub elitist_weight: f64, // Weight for elitist ant pheromone deposit (0 for no elitism)
+}
+
+impl Config {
+    pub fn build(mut args: impl Iterator<Item = String>) -> Result<Config, &'static str> {
+        args.next();
+
+        let mut file_path: Option<String> = None;
+        let mut num_ants = 10;
+        let mut num_iters = 100;
+        let mut alpha = 0.5;
+        let mut beta = 2.0;
+        let mut evap_rate = 0.5;
+        let mut q_val = 100.0;
+        let mut init_pheromone = 0.2;
+        let mut elitist_weight = 1.0;
+
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "-n" | "--ants" => {
+                    num_ants = args
+                        .next()
+                        .ok_or("Missing value for --ants")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --ants")?
+                }
+                "-i" | "--iters" => {
+                    num_iters = args
+                        .next()
+                        .ok_or("Missing value for --iters")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --iters")?
+                }
+                "-a" | "--alpha" => {
+                    alpha = args
+                        .next()
+                        .ok_or("Missing value for --alpha")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --alpha")?
+                }
+                "-b" | "--beta" => {
+                    beta = args
+                        .next()
+                        .ok_or("Missing value for --beta")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --beta")?
+                }
+                "-e" | "--evap-rate" => {
+                    evap_rate = args
+                        .next()
+                        .ok_or("Missing value for --evap-rate")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --evap-rate")?
+                }
+                "-q" | "--q-val" => {
+                    q_val = args
+                        .next()
+                        .ok_or("Missing value for --q-val")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --q-val")?
+                }
+                "-p" | "--init-pheromone" => {
+                    init_pheromone = args
+                        .next()
+                        .ok_or("Missing value for --init-pheromone")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --init-pheromone")?
+                }
+                "-w" | "--elitist-weight" => {
+                    elitist_weight = args
+                        .next()
+                        .ok_or("Missing value for --elitist-weight")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --elitist-weight")?
+                }
+                _ if file_path.is_none() && !arg.starts_with('-') => file_path = Some(arg),
+                _ => return Err("Invalid option or unexpected argument"),
+            }
+        }
+        file_path = Some(file_path.ok_or("TSPLIB file path not provided")?);
+
+        Ok(Config {
+            file_path,
+            num_ants,
+            num_iters,
+            alpha,
+            beta,
+            evap_rate,
+            q_val,
+            init_pheromone,
+            elitist_weight,
+        })
+    }
+}
+
+pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
+    println!("\nACO Configuration:");
+    println!(" Iterations: {}", config.num_iters);
+    println!(" Number of Ants: {}", config.num_ants);
+    println!(" Alpha (pheromone influence): {:.2}", config.alpha);
+    println!(" Beta (heuristic influence): {:.2}", config.beta);
+    println!(" Evaporation Rate (rho): {:.2}", config.evap_rate);
+    println!(" Q Value (pheromone deposit): {:.2}", config.q_val);
+    println!(" Initial Pheromone: {:.2}", config.init_pheromone);
+    println!(" Elitist Weight: {:.2}", config.elitist_weight);
+
+    println!(
+        "\nStarting ACO to solve TSP for {}...",
+        config
+            .file_path
+            .as_deref()
+            .ok_or("File path not provided in config")?
+    );
+    let instance = match parse_tsp_file(
+        config
+            .file_path
+            .as_deref()
+            .ok_or("File path not provided in config")?,
+    ) {
+        Ok(inst) => {
+            println!("Successfully parsed: {}", inst.name);
+            println!(" Dimension: {}", inst.dimension);
+            println!(" Edge Weight Type: {:?}", inst.edge_weight_type);
+            println!(" TSP Type: {}", inst.tsp_type);
+            println!(" Comment {}", inst.comment);
+            if inst.dimension == 0 {
+                return Err("Problem dimension is 0. Cannot solve.".into());
+            }
+            inst
+        }
+        Err(e) => {
+            return Err(format!("Error parsing TSPLIB file: {}", e).into());
+        }
+    };
+
+    println!("\nStarting ACO to solve TSP for {}...", instance.name);
+    let start_time = Instant::now();
+    let (best_tour_indices, best_tour_length) = solve_tsp_aco(&instance, config);
+    let duration = start_time.elapsed();
+
+    println!("\n--- ACO Results for {} ---", instance.name);
+    println!(" Time taken: {:.2?}", duration);
+    println!(" Best tour length found: {:.2}", best_tour_length);
+
+    if !best_tour_indices.is_empty() {
+        if best_tour_indices.len() <= 30 {
+            if let Some(nodes) = &instance.node_coords {
+                let display_tour: Vec<usize> =
+                    best_tour_indices.iter().map(|&idx| nodes[idx].id).collect();
+                println!("Route (display_tour): {:?}", display_tour);
+            } else {
+                println!("Route (best_tour_indices): {:?}", best_tour_indices);
+            }
+        } else {
+            println!(
+                " Tour is too long to print ({} cities).",
+                best_tour_indices.len()
+            );
+        }
+    } else {
+        println!(" No tour found.");
+    }
+
+    let solutions_file_path = "tsplib/solutions";
+    match load_optimal_solutions(solutions_file_path) {
+        Ok(optimal_solutions) => {
+            let problem_base_name = instance.name.split('.').next().unwrap_or(&instance.name);
+            let (optimal_len_opt, diff_opt) =
+                evaluate_solution(problem_base_name, best_tour_length, &optimal_solutions);
+
+            if let Some(optimal_len) = optimal_len_opt {
+                println!(
+                    " Optimal solution for {}: {:.0}",
+                    problem_base_name, optimal_len
+                );
+                if let Some(percentage_diff) = diff_opt {
+                    println!(
+                        " ACO solution is {:.2}% away from optimal.",
+                        percentage_diff
+                    );
+                }
+            } else {
+                println!(
+                    " No optimal solution found in {} for '{}'",
+                    solutions_file_path, problem_base_name
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(" Could not load optimal solutions: {}", e);
+        }
+    }
+
+    Ok(())
+}
 
 fn calc_euc_2d_dist(n1: &Node, n2: &Node) -> f64 {
     let dx = n1.x - n2.x;
     let dy = n1.y - n2.y;
-    ((dx * dx + dy * dy).sqrt() + 0.5).floor()
+    ((dx * dx + dy * dy).sqrt()).round()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,34 +393,6 @@ pub fn parse_tsp_file(file_path: &str) -> Result<TspInstance, String> {
     })
 }
 
-#[derive(Debug, Clone)]
-pub struct ACOConfig {
-    pub num_ants: usize,
-    pub num_iterations: usize,
-    pub alpha: f64,             // Pheromone influence
-    pub beta: f64,              // Heuristic influence
-    pub evap_rate: f64,         // Rho
-    pub q_val: f64,             // Pheromone deposit factor
-    pub initial_pheromone: f64, // Initial pheromone
-    pub elitist_weight: f64,    // Weight for elitist ant pheromone deposit (0 for no elitism)
-}
-
-impl Default for ACOConfig {
-    fn default() -> Self {
-        ACOConfig {
-            num_ants: 10, // N, N*2, N/2
-            num_iterations: 1000,
-            alpha: 0.5,             // 0.5 - 2.0
-            beta: 5.0,              // 2.0 - 5.0
-            evap_rate: 0.5,         // 0.1 - 0.5
-            q_val: 100.0,           // Pheromone Deposit Factor
-            initial_pheromone: 0.2, // != 0; 0.1 - 0.2
-            // e.g., 1.0 means global best tour gets `elitist_weight * Q / L_gb`
-            elitist_weight: 1.0,
-        }
-    }
-}
-
 struct Ant {
     tour: Vec<usize>,
     visited: Vec<bool>,
@@ -245,7 +424,7 @@ impl Ant {
     }
 }
 
-pub fn solve_tsp_aco(instance: &TspInstance, config: &ACOConfig) -> (Vec<usize>, f64) {
+pub fn solve_tsp_aco(instance: &TspInstance, config: &Config) -> (Vec<usize>, f64) {
     let n_cities = instance.dimension;
     if n_cities == 0 {
         return (Vec::new(), 0.0);
@@ -267,13 +446,13 @@ pub fn solve_tsp_aco(instance: &TspInstance, config: &ACOConfig) -> (Vec<usize>,
         }
     }
 
-    let mut pheromone_matrix = vec![vec![config.initial_pheromone; n_cities]; n_cities];
+    let mut pheromone_matrix = vec![vec![config.init_pheromone; n_cities]; n_cities];
     let mut best_tour_overall: Vec<usize> = Vec::new();
     let mut best_tour_length_overall = f64::MAX;
 
     let mut rng = rand::rng();
 
-    for iteration in 0..config.num_iterations {
+    for iteration in 0..config.num_iters {
         let mut ants: Vec<Ant> =
             (0..config.num_ants.min(n_cities)) // Ensure num_ants <= n_cities
                 .map(|_| Ant::new(rng.random_range(0..n_cities), n_cities))
@@ -292,7 +471,6 @@ pub fn solve_tsp_aco(instance: &TspInstance, config: &ACOConfig) -> (Vec<usize>,
                         let prob_num = pheromone.powf(config.alpha) * heuristic.powf(config.beta);
 
                         if prob_num.is_finite() && prob_num > 1e-9 {
-                            // Check for valid positive probability
                             choices.push((next_city_idx, prob_num));
                             current_choices_sum += prob_num;
                         }
@@ -338,7 +516,6 @@ pub fn solve_tsp_aco(instance: &TspInstance, config: &ACOConfig) -> (Vec<usize>,
             for j in 0..n_cities {
                 pheromone_matrix[i][j] *= 1.0 - config.evap_rate;
                 if pheromone_matrix[i][j] < 1e-5 {
-                    // Prevent pheromones from becoming too small (min pheromone implicitly)
                     pheromone_matrix[i][j] = 1e-5;
                 }
             }
@@ -350,7 +527,6 @@ pub fn solve_tsp_aco(instance: &TspInstance, config: &ACOConfig) -> (Vec<usize>,
                 let pheromone_to_deposit = config.q_val / ant.tour_length;
                 for k in 0..n_cities {
                     let city1_idx = ant.tour[k];
-                    // Handles wrap-around for the last edge
                     let city2_idx = ant.tour[(k + 1) % n_cities];
                     pheromone_matrix[city1_idx][city2_idx] += pheromone_to_deposit;
                     pheromone_matrix[city2_idx][city1_idx] += pheromone_to_deposit; // Symmetric
@@ -386,7 +562,7 @@ pub fn solve_tsp_aco(instance: &TspInstance, config: &ACOConfig) -> (Vec<usize>,
             }
         }
 
-        if iteration % 100 == 0 || iteration == config.num_iterations - 1 {
+        if iteration % 100 == 0 || iteration == config.num_iters - 1 {
             println!(
                 "Iter {}: Best tour length so far: {:.2}",
                 iteration, best_tour_length_overall
