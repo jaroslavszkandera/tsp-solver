@@ -13,5 +13,5 @@ cargo run [FILE] [OPTION]...
 ## Roadmap
 - [X] Solve TSP
 - [X] Better cmd line args parsing
-- [ ] Parse multiple file formats
+- [X] Parse multiple file formats
 - [ ] Visualization
