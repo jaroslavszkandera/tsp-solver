@@ -1,13 +1,32 @@
+#[derive(Debug, Clone)]
 pub struct Config {
     pub file_path: Option<String>,
-    pub num_ants: usize,
     pub num_iters: usize,
-    pub alpha: f64,          // Pheromone influence
-    pub beta: f64,           // Heuristic influence
-    pub evap_rate: f64,      // Rho
-    pub q_val: f64,          // Pheromone deposit factor
-    pub init_pheromone: f64, // Initial pheromone
-    pub elitist_weight: f64, // Weight for elitist ant pheromone deposit (0 for no elitism)
+    pub num_ants: usize,
+    pub alpha: f64,     // Pheromone influence
+    pub beta: f64,      // Heuristic influence
+    pub evap_rate: f64, // Rho
+    pub q_val: f64,     // Pheromone deposit amount scaling factor
+    pub init_pheromone: f64,
+    pub elitist_weight: f64, // Weight for the elitist ant's pheromone deposit
+    pub min_pheromone_val: f64, // Minimum pheromone value
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            file_path: None,
+            num_iters: 1000,
+            num_ants: 50,
+            alpha: 1.0,
+            beta: 3.0,
+            evap_rate: 0.1,
+            q_val: 100.0,
+            init_pheromone: 0.1,
+            elitist_weight: 1.0, // e.g. 1 means global best adds pheromone like one ant
+            min_pheromone_val: 1e-5,
+        }
+    }
 }
 
 impl Config {
@@ -23,6 +42,7 @@ impl Config {
         let mut q_val = 100.0;
         let mut init_pheromone = 0.2;
         let mut elitist_weight = 1.0;
+        let mut min_pheromone_val = 1e-5;
 
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -82,6 +102,13 @@ impl Config {
                         .parse()
                         .map_err(|_| "Invalid number for --elitist-weight")?
                 }
+                "-m" | "--min-pheromone-val" => {
+                    min_pheromone_val = args
+                        .next()
+                        .ok_or("Missing value for --min-pheromone-val")?
+                        .parse()
+                        .map_err(|_| "Invalid number for --min-pheromone-val")?
+                }
                 _ if file_path.is_none() && !arg.starts_with('-') => file_path = Some(arg),
                 _ => return Err("Invalid option or unexpected argument"),
             }
@@ -98,6 +125,7 @@ impl Config {
             q_val,
             init_pheromone,
             elitist_weight,
+            min_pheromone_val,
         })
     }
 }
