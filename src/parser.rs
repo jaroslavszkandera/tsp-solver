@@ -2,22 +2,29 @@ use std::f64::consts::PI;
 use std::fs::File as StdFile;
 use std::io::{BufRead, BufReader as StdBufReader};
 
+#[inline]
 fn to_radians(degrees: f64) -> f64 {
     degrees * PI / 180.0
 }
 
+#[inline]
+fn dist_sq(n1: &Node, n2: &Node) -> f64 {
+    let dx = n1.x - n2.x;
+    let dy = n1.y - n2.y;
+    dx * dx + dy * dy
+}
+
+#[inline]
 fn calc_euc_2d_dist(n1: &Node, n2: &Node) -> f64 {
-    let dx = n1.x - n2.x;
-    let dy = n1.y - n2.y;
-    (dx * dx + dy * dy).sqrt()
+    dist_sq(n1, n2).sqrt()
 }
 
+#[inline]
 fn calc_ceil_2d_dist(n1: &Node, n2: &Node) -> f64 {
-    let dx = n1.x - n2.x;
-    let dy = n1.y - n2.y;
-    ((dx * dx + dy * dy).sqrt()).ceil()
+    (dist_sq(n1, n2).sqrt()).ceil()
 }
 
+#[inline]
 fn calc_geo_dist(n1: &Node, n2: &Node) -> f64 {
     const RRR: f64 = 6378.388; // Earth radius in km
 
@@ -35,6 +42,7 @@ fn calc_geo_dist(n1: &Node, n2: &Node) -> f64 {
     distance
 }
 
+#[inline]
 fn calc_att_dist(n1: &Node, n2: &Node) -> f64 {
     let dx = n1.x - n2.x;
     let dy = n1.y - n2.y;
@@ -91,7 +99,15 @@ impl TspInstance {
                 node1_idx, node2_idx, self.dimension
             );
         }
-        self.dist_matrix[node1_idx][node2_idx]
+        // Assumes dist_matrix is always square and valid if dimension > 0
+        unsafe {
+            *self
+                .dist_matrix
+                .get_unchecked(node1_idx)
+                .get_unchecked(node2_idx)
+        }
+        // Safer version
+        // self.dist_matrix[node1_idx][node2_idx]
     }
 }
 
