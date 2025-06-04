@@ -33,99 +33,83 @@ impl Config {
     pub fn build(mut args: impl Iterator<Item = String>) -> Result<Config, &'static str> {
         args.next();
 
-        let mut file_path: Option<String> = None;
-        let mut num_ants = 10;
-        let mut num_iters = 100;
-        let mut alpha = 0.5;
-        let mut beta = 2.0;
-        let mut evap_rate = 0.5;
-        let mut q_val = 100.0;
-        let mut init_pheromone = 0.2;
-        let mut elitist_weight = 1.0;
-        let mut min_pheromone_val = 1e-5;
+        let mut config = Config::default();
 
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "-n" | "--ants" => {
-                    num_ants = args
+                    config.num_ants = args
                         .next()
                         .ok_or("Missing value for --ants")?
                         .parse()
                         .map_err(|_| "Invalid number for --ants")?
                 }
                 "-i" | "--iters" => {
-                    num_iters = args
+                    config.num_iters = args
                         .next()
                         .ok_or("Missing value for --iters")?
                         .parse()
                         .map_err(|_| "Invalid number for --iters")?
                 }
                 "-a" | "--alpha" => {
-                    alpha = args
+                    config.alpha = args
                         .next()
                         .ok_or("Missing value for --alpha")?
                         .parse()
                         .map_err(|_| "Invalid number for --alpha")?
                 }
                 "-b" | "--beta" => {
-                    beta = args
+                    config.beta = args
                         .next()
                         .ok_or("Missing value for --beta")?
                         .parse()
                         .map_err(|_| "Invalid number for --beta")?
                 }
                 "-e" | "--evap-rate" => {
-                    evap_rate = args
+                    config.evap_rate = args
                         .next()
                         .ok_or("Missing value for --evap-rate")?
                         .parse()
                         .map_err(|_| "Invalid number for --evap-rate")?
                 }
                 "-q" | "--q-val" => {
-                    q_val = args
+                    config.q_val = args
                         .next()
                         .ok_or("Missing value for --q-val")?
                         .parse()
                         .map_err(|_| "Invalid number for --q-val")?
                 }
                 "-p" | "--init-pheromone" => {
-                    init_pheromone = args
+                    config.init_pheromone = args
                         .next()
                         .ok_or("Missing value for --init-pheromone")?
                         .parse()
                         .map_err(|_| "Invalid number for --init-pheromone")?
                 }
                 "-w" | "--elitist-weight" => {
-                    elitist_weight = args
+                    config.elitist_weight = args
                         .next()
                         .ok_or("Missing value for --elitist-weight")?
                         .parse()
                         .map_err(|_| "Invalid number for --elitist-weight")?
                 }
                 "-m" | "--min-pheromone-val" => {
-                    min_pheromone_val = args
+                    config.min_pheromone_val = args
                         .next()
                         .ok_or("Missing value for --min-pheromone-val")?
                         .parse()
                         .map_err(|_| "Invalid number for --min-pheromone-val")?
                 }
-                _ if file_path.is_none() && !arg.starts_with('-') => file_path = Some(arg),
+                _ if config.file_path.is_none() && !arg.starts_with('-') => {
+                    config.file_path = Some(arg)
+                }
                 _ => return Err("Invalid option or unexpected argument"),
             }
         }
-        file_path = Some(file_path.ok_or("TSPLIB file path not provided")?);
+        if config.file_path.is_none() {
+            return Err("TSPLIB file path not provided");
+        }
 
-        Ok(Config {
-            file_path,
-            num_ants,
-            num_iters,
-            alpha,
-            beta,
-            evap_rate,
-            q_val,
-            init_pheromone,
-            elitist_weight,
-            min_pheromone_val,
-        })
+        Ok(config)
     }
 }
