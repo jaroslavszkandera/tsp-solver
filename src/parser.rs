@@ -3,13 +3,13 @@ use std::fs::File as StdFile;
 use std::io::{BufRead, BufReader as StdBufReader};
 
 fn to_radians(degrees: f64) -> f64 {
-    degrees * PI / 100.0
+    degrees * PI / 180.0
 }
 
 fn calc_euc_2d_dist(n1: &Node, n2: &Node) -> f64 {
     let dx = n1.x - n2.x;
     let dy = n1.y - n2.y;
-    ((dx * dx + dy * dy).sqrt()).round()
+    (dx * dx + dy * dy).sqrt()
 }
 
 fn calc_ceil_2d_dist(n1: &Node, n2: &Node) -> f64 {
@@ -32,7 +32,7 @@ fn calc_geo_dist(n1: &Node, n2: &Node) -> f64 {
     let q3 = (lat1_rad + lat2_rad).cos();
 
     let distance = RRR * (0.5 * ((1.0 + q1) * q2 - (1.0 - q1) * q3)).acos() + 1.0;
-    distance.round() // round could be unnecessary
+    distance
 }
 
 fn calc_att_dist(n1: &Node, n2: &Node) -> f64 {
